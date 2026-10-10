@@ -10,35 +10,51 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.skillarena.app.ui.render.ArenaTransform
+import com.skillarena.app.ui.render.Palette
+import com.skillarena.app.ui.render.drawBattle
+import com.skillarena.app.ui.render.drawCardIcon
+import com.skillarena.core.cards.BuildingCard
 import com.skillarena.core.cards.Card
+import com.skillarena.core.cards.SpellCard
 import com.skillarena.core.match.MatchPhase
-import com.skillarena.core.match.PlayError
 import com.skillarena.core.match.MatchResult
+import com.skillarena.core.match.PlayError
 
 @Composable
 fun GameScreen(vm: GameViewModel, onExit: () -> Unit) {
@@ -49,7 +65,12 @@ fun GameScreen(vm: GameViewModel, onExit: () -> Unit) {
     val textMeasurer = rememberTextMeasurer()
     var canvasSize by remember { mutableStateOf(Size.Zero) }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF1B1B1B))) {
+    // Game loop, synced to the display refresh rate.
+    LaunchedEffect(match) {
+        while (true) withFrameNanos(vm::onFrame)
+    }
+
+    Column(Modifier.fillMaxSize().background(Color(0xFF14161C))) {
         TopBar(match.players[1].crowns, match.players[0].crowns, match.secondsRemaining, match.phase)
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -61,15 +82,15 @@ fun GameScreen(vm: GameViewModel, onExit: () -> Unit) {
                         detectTapGestures { offset -> vm.onArenaTap(ArenaTransform(canvasSize).toArena(offset)) }
                     },
             ) {
-                vm.frame // read inside draw scope so every frame invalidates the canvas
-                drawArena(match, ArenaTransform(size), selected, textMeasurer)
+                vm.frame // invalidate the canvas every frame
+                drawBattle(match, vm.renderAlpha, vm.now, selected, vm.effects, textMeasurer)
             }
 
             vm.lastError?.let { ErrorBanner(it, Modifier.align(Alignment.TopCenter)) }
             match.result?.let { ResultOverlay(it, vm.rating, onRematch = vm::startMatch, onExit = onExit) }
         }
 
-        Hand(me.hand, me.nextCard, me.elixir, vm.selectedCardId, vm::onCardTap)
+        Hand(me.hand, me.nextCard, me.elixir, vm.selectedCardId, vm.now, vm::onCardTap)
         ElixirBar(me.elixir)
     }
 }
@@ -84,87 +105,149 @@ private fun TopBar(enemyCrowns: Int, myCrowns: Int, secondsRemaining: Float, pha
         else -> ""
     }
     Row(
-        Modifier.fillMaxWidth().padding(8.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("👑 $enemyCrowns", color = Color(0xFFE53935), fontSize = 20.sp)
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Crowns(enemyCrowns, Palette.Red)
+        Column(
+            Modifier.background(Color(0xFF262A33), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text("%d:%02d".format(s / 60, s % 60), color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            if (phaseLabel.isNotEmpty()) Text(phaseLabel, color = Color(0xFFE040FB), fontSize = 12.sp)
+            if (phaseLabel.isNotEmpty()) Text(phaseLabel, color = Palette.Elixir, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
-        Text("👑 $myCrowns", color = Color(0xFF2979FF), fontSize = 20.sp)
+        Crowns(myCrowns, Palette.Blue)
     }
 }
 
 @Composable
-private fun Hand(hand: List<Card>, next: Card, elixir: Float, selectedId: String?, onTap: (String) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Volgende", color = Color.Gray, fontSize = 10.sp)
-            CardView(next, affordable = false, selected = false, small = true) {}
-        }
-        Spacer(Modifier.width(4.dp))
-        for (card in hand) {
-            CardView(card, affordable = elixir >= card.cost, selected = card.id == selectedId, Modifier.weight(1f)) {
-                onTap(card.id)
+private fun Crowns(count: Int, color: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        repeat(3) { i ->
+            Canvas(Modifier.size(22.dp)) {
+                val w = size.width
+                val h = size.height
+                val crown = Path().apply {
+                    moveTo(w * 0.1f, h * 0.8f)
+                    lineTo(w * 0.1f, h * 0.3f)
+                    lineTo(w * 0.32f, h * 0.55f)
+                    lineTo(w * 0.5f, h * 0.15f)
+                    lineTo(w * 0.68f, h * 0.55f)
+                    lineTo(w * 0.9f, h * 0.3f)
+                    lineTo(w * 0.9f, h * 0.8f)
+                    close()
+                }
+                drawPath(crown, if (i < count) color else Color(0xFF3A3F4B))
             }
         }
     }
 }
 
 @Composable
+private fun Hand(hand: List<Card>, next: Card, elixir: Float, selectedId: String?, now: Float, onTap: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(top = 10.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Volgende", color = Color.Gray, fontSize = 10.sp)
+            CardView(next, elixir = 10f, selected = false, now = now, small = true) {}
+        }
+        Spacer(Modifier.width(2.dp))
+        for (card in hand) {
+            CardView(card, elixir, selected = card.id == selectedId, now = now, modifier = Modifier.weight(1f)) {
+                onTap(card.id)
+            }
+        }
+    }
+}
+
+private fun cardBrush(card: Card) = when (card) {
+    is SpellCard -> Brush.verticalGradient(listOf(Color(0xFF7B3FA0), Color(0xFF3E1F5C)))
+    is BuildingCard -> Brush.verticalGradient(listOf(Color(0xFF9C6B3C), Color(0xFF4E3420)))
+    else -> Brush.verticalGradient(listOf(Color(0xFF3F7BD6), Color(0xFF1C3A6E)))
+}
+
+@Composable
 private fun CardView(
     card: Card,
-    affordable: Boolean,
+    elixir: Float,
     selected: Boolean,
+    now: Float,
     modifier: Modifier = Modifier,
     small: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(10.dp)
+    val affordable = elixir >= card.cost
     Box(
         modifier
-            .then(if (small) Modifier.size(44.dp, 56.dp) else Modifier.height(84.dp))
-            .background(if (affordable) Color(0xFF37474F) else Color(0xFF263238), shape)
-            .border(if (selected) 3.dp else 1.dp, if (selected) Color.Yellow else Color.Gray, shape)
-            .clickable(onClick = onClick)
-            .padding(4.dp),
+            .offset(y = if (selected) (-10).dp else 0.dp)
+            .then(if (small) Modifier.size(46.dp, 58.dp) else Modifier.height(92.dp))
+            .background(cardBrush(card), shape)
+            .border(if (selected) 3.dp else 1.5.dp, if (selected) Palette.Gold else Color(0xFF0D0F14), shape)
+            .clickable(onClick = onClick),
     ) {
-        Text(
-            card.name,
-            color = if (affordable || small) Color.White else Color.Gray,
-            fontSize = if (small) 9.sp else 12.sp,
-            modifier = Modifier.align(Alignment.Center),
-        )
-        Text(
-            "${card.cost}",
-            color = Color(0xFFE040FB),
-            fontWeight = FontWeight.Bold,
-            fontSize = if (small) 10.sp else 14.sp,
-            modifier = Modifier.align(Alignment.TopStart),
-        )
+        Canvas(Modifier.fillMaxSize().padding(bottom = if (small) 0.dp else 16.dp)) { drawCardIcon(card.id, now) }
+        if (!small) {
+            Text(
+                card.name,
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 3.dp),
+            )
+        }
+        // Not affordable yet: dark overlay that shrinks as elixir fills up
+        if (!affordable) {
+            val missing = ((card.cost - elixir) / card.cost).coerceIn(0f, 1f)
+            Box(Modifier.fillMaxWidth().fillMaxHeight(missing).background(Color.Black.copy(alpha = 0.55f), shape))
+        }
+        Box(
+            Modifier
+                .padding(3.dp)
+                .size(if (small) 16.dp else 20.dp)
+                .background(Palette.Elixir, CircleShape)
+                .border(1.5.dp, Color.White, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("${card.cost}", color = Color.White, fontSize = if (small) 10.sp else 12.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 private fun ElixirBar(elixir: Float) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 12.dp),
+        Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${elixir.toInt()}", color = Color(0xFFE040FB), fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-        Box(Modifier.weight(1f).height(16.dp).background(Color(0xFF311B92), RoundedCornerShape(4.dp))) {
-            Box(
-                Modifier
-                    .fillMaxWidth(elixir / 10f)
-                    .height(16.dp)
-                    .background(Color(0xFFD500F9), RoundedCornerShape(4.dp)),
-            )
+        Box(
+            Modifier.size(30.dp).background(Palette.Elixir, CircleShape).border(2.dp, Color.White, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("${elixir.toInt()}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        }
+        Spacer(Modifier.width(6.dp))
+        Canvas(Modifier.weight(1f).height(18.dp)) {
+            val gap = 3.dp.toPx()
+            val seg = (size.width - gap * 9) / 10f
+            for (i in 0 until 10) {
+                val x = i * (seg + gap)
+                val fill = (elixir - i).coerceIn(0f, 1f)
+                drawRoundRect(Palette.ElixirDark, Offset(x, 0f), Size(seg, size.height), androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()))
+                if (fill > 0f) {
+                    drawRoundRect(
+                        Brush.verticalGradient(listOf(Color(0xFFF08CFF), Palette.Elixir)),
+                        Offset(x, 0f), Size(seg * fill, size.height), androidx.compose.ui.geometry.CornerRadius(4.dp.toPx()),
+                    )
+                }
+            }
         }
     }
 }

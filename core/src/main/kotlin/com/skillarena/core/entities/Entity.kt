@@ -23,6 +23,12 @@ class Entity(
     /** King tower sleeps until it takes damage or loses a princess tower. */
     var active: Boolean = kind != EntityKind.KING_TOWER
 
+    // ---- Presentation helpers (not part of the simulation state) ----
+    /** Position at the start of the current tick; renderers interpolate between this and [pos]. */
+    var prevPos: Vec2 = pos
+    var deployTicksTotal: Int = 0
+    var lastAttackTick: Long = Long.MIN_VALUE / 2
+
     val maxHp: Int get() = stats.hitpoints
     val isAlive: Boolean get() = hp > 0f
     val isDeploying: Boolean get() = deployTicksLeft > 0

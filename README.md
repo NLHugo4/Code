@@ -4,6 +4,11 @@ Een Android-game met de mechanics van Clash Royale, maar **zonder levels**.
 Net als bij schaken heeft iedereen exact dezelfde stukken: elke kaart is vanaf het begin
 beschikbaar en heeft voor iedereen dezelfde stats. Winnen hangt alleen af van je beslissingen.
 
+<p>
+  <img src="docs/screenshots/spelscherm.png" width="270" alt="Spelscherm">
+  <img src="docs/screenshots/gevecht.png" width="270" alt="Gevecht">
+</p>
+
 ## Wat zit erin
 
 | Mechanic | Hoe |
@@ -19,6 +24,7 @@ beschikbaar en heeft voor iedereen dezelfde stats. Winnen hangt alleen af van je
 | Elo-rating + matchmaking op rating (zoals schaken) | `rating/Elo.kt` |
 | Bot-tegenstander | `ai/Bot.kt` |
 | Replays | `match/Replay.kt` |
+| Graphics: getekende troepen/torens, projectielen, explosies, vloeiende beweging | `app/.../ui/render/` |
 
 ## Geen levels, alleen skill
 
@@ -27,6 +33,17 @@ beschikbaar en heeft voor iedereen dezelfde stats. Winnen hangt alleen af van je
 - Er is geen willekeur in gevechten (geen crits, geen missers). De enige seed bepaalt alleen de
   startvolgorde van je deck.
 - Progressie is je **Elo-rating**, niet je collectie.
+
+## Graphics
+
+Alles wordt getekend met code (geen plaatjes nodig), in `app/src/main/java/com/skillarena/app/ui/render/`:
+
+- `Sprites.kt` – elke kaart en toren heeft een eigen tekening. Een nieuwe kaart? Voeg een functie toe en
+  koppel hem in `drawUnitSprite`.
+- `Effects.kt` – pijlen, kogels, kanonskogels, vuurballen, explosies, rookwolkjes en schermschudden.
+- `BattleRenderer.kt` – zet alles samen. Units bewegen vloeiend doordat er tussen twee ticks wordt
+  geïnterpoleerd (`Entity.prevPos` → `Entity.pos`).
+- `ArenaBackground.kt` – gras, zandpaden, bewegend water en houten bruggen.
 
 ## Architectuur
 
@@ -67,8 +84,7 @@ match.result                 // != null als de wedstrijd klaar is
 2. **Online multiplayer** – een kleine relay-server die `PlayCard`-commands doorstuurt
    (lockstep), plus server-side `Replay`-validatie.
 3. **Rating opslaan** – nu staat de Elo alleen in het geheugen; zet het in DataStore of op de server.
-4. **Graphics & geluid** – sprites in plaats van cirkels, animaties via `GameEvent`s,
-   interpolatie tussen ticks voor vloeiende beweging.
+4. **Geluid** – geluidseffecten koppelen aan `GameEvent`s (aanval, spreuk, toren kapot).
 5. **Meer kaarten en mechanics** – bijv. spawners, charge-aanvallen, knockback,
    een `onDeath`-effect. Voeg een veld toe aan `UnitStats` en verwerk het in `Match.updateEntity`.
 6. **Pathfinding verfijnen** – units lopen nu via de dichtstbijzijnde brug en duwen elkaar weg;

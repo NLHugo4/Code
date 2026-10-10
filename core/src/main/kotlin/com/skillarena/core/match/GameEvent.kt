@@ -10,6 +10,28 @@ sealed interface GameEvent {
     data class CardPlayed(override val tick: Long, val player: Int, val cardId: String, val pos: Vec2) : GameEvent
     data class CardRejected(override val tick: Long, val player: Int, val cardId: String, val reason: PlayError) : GameEvent
     data class SpellImpact(override val tick: Long, val player: Int, val cardId: String, val pos: Vec2, val radius: Float) : GameEvent
+    /** An attack was made; damage is applied immediately, renderers can show a projectile or swing. */
+    data class Attack(
+        override val tick: Long,
+        val attackerId: Int,
+        val targetId: Int,
+        val owner: Int,
+        val attackerKind: EntityKind,
+        val attackerCardId: String?,
+        val from: Vec2,
+        val to: Vec2,
+        val splashRadius: Float,
+    ) : GameEvent
+
+    data class EntityDied(
+        override val tick: Long,
+        val entityId: Int,
+        val owner: Int,
+        val kind: EntityKind,
+        val cardId: String?,
+        val pos: Vec2,
+    ) : GameEvent
+
     data class TowerDestroyed(override val tick: Long, val owner: Int, val kind: EntityKind) : GameEvent
     data class PhaseChanged(override val tick: Long, val phase: MatchPhase) : GameEvent
     data class MatchEnded(override val tick: Long, val result: MatchResult) : GameEvent

@@ -125,6 +125,7 @@ class Match(
     /** Advances the simulation by one tick. */
     fun step() {
         if (isOver) return
+        for (e in _entities) e.prevPos = e.pos
         processCommands()
         regenerateElixir()
         updateSpells()
@@ -197,6 +198,7 @@ class Match(
     private fun spawn(owner: Int, kind: EntityKind, stats: UnitStats, pos: Vec2, cardId: String?): Entity {
         val e = Entity(nextEntityId++, owner, kind, stats, pos, cardId)
         e.deployTicksLeft = config.seconds(stats.deployTime)
+        e.deployTicksTotal = e.deployTicksLeft
         _entities += e
         return e
     }
@@ -380,6 +382,11 @@ class Match(
     }
 
     private fun attack(attacker: Entity, target: Entity) {
+        attacker.lastAttackTick = tick
+        events += GameEvent.Attack(
+            tick, attacker.id, target.id, attacker.owner, attacker.kind, attacker.cardId,
+            attacker.pos, target.pos, attacker.stats.splashRadius,
+        )
         val dmg = attacker.stats.damage.toFloat()
         if (attacker.stats.splashRadius <= 0f) {
             applyDamage(target, dmg)
@@ -447,6 +454,7 @@ class Match(
         if (dead.isEmpty()) return
         _entities.removeAll(dead)
         for (d in dead) {
+            events += GameEvent.EntityDied(tick, d.id, d.owner, d.kind, d.cardId, d.pos)
             if (!d.isTower) continue
             val opponent = players[1 - d.owner]
             events += GameEvent.TowerDestroyed(tick, d.owner, d.kind)
