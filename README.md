@@ -24,7 +24,7 @@ beschikbaar en heeft voor iedereen dezelfde stats. Winnen hangt alleen af van je
 | Elo-rating + matchmaking op rating (zoals schaken) | `rating/Elo.kt` |
 | Bot-tegenstander | `ai/Bot.kt` |
 | Replays | `match/Replay.kt` |
-| Graphics: getekende troepen/torens, projectielen, explosies, vloeiende beweging | `app/.../ui/render/` |
+| Low-poly graphics, bewegend water, projectielen, explosies, vloeiende beweging | `graphics/`, `app/.../ui/render/` |
 
 ## Geen levels, alleen skill
 
@@ -36,14 +36,22 @@ beschikbaar en heeft voor iedereen dezelfde stats. Winnen hangt alleen af van je
 
 ## Graphics
 
-Alles wordt getekend met code (geen plaatjes nodig), in `app/src/main/java/com/skillarena/app/ui/render/`:
+De graphics staan in **`graphics/`** (low-poly stijl, uitleg in `graphics/LEESMIJ.md`):
+SVG-bronbestanden plus PNG's op 2x in `graphics/png/`. De app gebruikt die PNG's direct:
+`app/build.gradle.kts` pakt `graphics/png` in als Android-assets, dus een plaatje vervangen =
+het PNG-bestand overschrijven en opnieuw bouwen.
 
-- `Sprites.kt` – elke kaart en toren heeft een eigen tekening. Een nieuwe kaart? Voeg een functie toe en
-  koppel hem in `drawUnitSprite`.
-- `Effects.kt` – pijlen, kogels, kanonskogels, vuurballen, explosies, rookwolkjes en schermschudden.
-- `BattleRenderer.kt` – zet alles samen. Units bewegen vloeiend doordat er tussen twee ticks wordt
-  geïnterpoleerd (`Entity.prevPos` → `Entity.pos`).
-- `ArenaBackground.kt` – gras, zandpaden, bewegend water en houten bruggen.
+- `ui/AssetLoader.kt` – laadt alle PNG's op de achtergrond.
+- `ui/render/GameAssets.kt` – zoekt plaatjes op per kaart-id en team (`units/blauw/knight.png`).
+- `ui/render/ArenaBackground.kt` – bomenrand, arena, **bewegend water** (twee glinsterlagen die
+  in tegengestelde richting schuiven en zachtjes pulseren) en de bruggen.
+- `ui/render/BattleRenderer.kt` – torens, units, puin en spreuken met de juiste ankerpunten.
+- `ui/render/Effects.kt` – projectielen, explosies, rook en schermschudden.
+- `ui/render/Sprites.kt` – getekende reserve-figuurtjes, gebruikt zolang de plaatjes nog laden
+  of als een nieuwe kaart nog geen plaatje heeft.
+
+Nieuwe kaart toevoegen? Zet `units/blauw/<id>.png`, `units/rood/<id>.png` en `kaarten/<id>.png` in
+`graphics/png/` en voeg het id toe aan `GameAssets.UNIT_IDS`.
 
 ## Architectuur
 

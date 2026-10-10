@@ -40,9 +40,9 @@ object CardCatalog {
     )
 
     val MUSKETEER = TroopCard(
-        "musketeer", "Schutter", 4,
+        "musketeer", "Scherpschutter", 4,
         UnitStats(
-            "Schutter", hitpoints = 720, damage = 215, hitSpeed = 1.0f, range = 6f, speed = MEDIUM,
+            "Scherpschutter", hitpoints = 720, damage = 215, hitSpeed = 1.0f, range = 6f, speed = MEDIUM,
             radius = 0.5f, hitsAir = true, sightRange = 6f,
         ),
     )

@@ -13,6 +13,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.skillarena.app.ui.GameScreen
 import com.skillarena.app.ui.GameViewModel
 import com.skillarena.app.ui.MenuScreen
+import com.skillarena.app.ui.rememberGameAssets
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,8 +22,9 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 var inGame by rememberSaveable { mutableStateOf(false) }
                 val vm: GameViewModel = viewModel()
+                val assets by rememberGameAssets()
                 if (inGame) {
-                    GameScreen(vm, onExit = { inGame = false })
+                    GameScreen(vm, assets, onExit = { inGame = false })
                 } else {
                     MenuScreen(
                         rating = vm.rating,

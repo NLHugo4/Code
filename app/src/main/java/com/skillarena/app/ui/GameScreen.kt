@@ -1,6 +1,14 @@
 package com.skillarena.app.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.IntSize
+import com.skillarena.app.ui.render.GameAssets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -57,7 +66,7 @@ import com.skillarena.core.match.MatchResult
 import com.skillarena.core.match.PlayError
 
 @Composable
-fun GameScreen(vm: GameViewModel, onExit: () -> Unit) {
+fun GameScreen(vm: GameViewModel, assets: GameAssets?, onExit: () -> Unit) {
     val match = vm.match
     vm.frame // read every frame so the HUD (timer, elixir, hand) recomposes
     val me = match.players[0]
@@ -77,21 +86,22 @@ fun GameScreen(vm: GameViewModel, onExit: () -> Unit) {
             Canvas(
                 Modifier
                     .fillMaxSize()
+                    .clipToBounds()
                     .onSizeChanged { canvasSize = Size(it.width.toFloat(), it.height.toFloat()) }
                     .pointerInput(Unit) {
                         detectTapGestures { offset -> vm.onArenaTap(ArenaTransform(canvasSize).toArena(offset)) }
                     },
             ) {
                 vm.frame // invalidate the canvas every frame
-                drawBattle(match, vm.renderAlpha, vm.now, selected, vm.effects, textMeasurer)
+                drawBattle(match, vm.renderAlpha, vm.now, selected, vm.effects, textMeasurer, assets)
             }
 
             vm.lastError?.let { ErrorBanner(it, Modifier.align(Alignment.TopCenter)) }
             match.result?.let { ResultOverlay(it, vm.rating, onRematch = vm::startMatch, onExit = onExit) }
         }
 
-        Hand(me.hand, me.nextCard, me.elixir, vm.selectedCardId, vm.now, vm::onCardTap)
-        ElixirBar(me.elixir)
+        Hand(me.hand, me.nextCard, me.elixir, vm.selectedCardId, vm.now, assets, vm::onCardTap)
+        ElixirBar(me.elixir, assets)
     }
 }
 
@@ -145,7 +155,9 @@ private fun Crowns(count: Int, color: Color) {
 }
 
 @Composable
-private fun Hand(hand: List<Card>, next: Card, elixir: Float, selectedId: String?, now: Float, onTap: (String) -> Unit) {
+private fun Hand(
+    hand: List<Card>, next: Card, elixir: Float, selectedId: String?, now: Float, assets: GameAssets?, onTap: (String) -> Unit,
+) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(top = 10.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -153,11 +165,11 @@ private fun Hand(hand: List<Card>, next: Card, elixir: Float, selectedId: String
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Volgende", color = Color.Gray, fontSize = 10.sp)
-            CardView(next, elixir = 10f, selected = false, now = now, small = true) {}
+            CardView(next, elixir = 10f, selected = false, now = now, assets = assets, small = true) {}
         }
         Spacer(Modifier.width(2.dp))
         for (card in hand) {
-            CardView(card, elixir, selected = card.id == selectedId, now = now, modifier = Modifier.weight(1f)) {
+            CardView(card, elixir, selected = card.id == selectedId, now = now, assets = assets, modifier = Modifier.weight(1f)) {
                 onTap(card.id)
             }
         }
@@ -176,12 +188,33 @@ private fun CardView(
     elixir: Float,
     selected: Boolean,
     now: Float,
+    assets: GameAssets?,
     modifier: Modifier = Modifier,
     small: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(10.dp)
     val affordable = elixir >= card.cost
+    val art = assets?.card(card.id)
+    if (art != null) {
+        // The card art (graphics/png/kaarten) already shows cost, name and count.
+        val shape = RoundedCornerShape(8.dp)
+        Box(
+            modifier
+                .offset(y = if (selected) (-10).dp else 0.dp)
+                .then(if (small) Modifier.width(40.dp) else Modifier)
+                .aspectRatio(art.width.toFloat() / art.height)
+                .then(if (selected) Modifier.border(3.dp, Palette.Gold, shape) else Modifier)
+                .clickable(onClick = onClick),
+        ) {
+            Image(art, contentDescription = card.name, modifier = Modifier.fillMaxSize())
+            if (!affordable) {
+                val missing = ((card.cost - elixir) / card.cost).coerceIn(0f, 1f)
+                Box(Modifier.fillMaxWidth().fillMaxHeight(missing).background(Color.Black.copy(alpha = 0.55f), shape))
+            }
+        }
+        return
+    }
+    val shape = RoundedCornerShape(10.dp)
     Box(
         modifier
             .offset(y = if (selected) (-10).dp else 0.dp)
@@ -222,7 +255,31 @@ private fun CardView(
 }
 
 @Composable
-private fun ElixirBar(elixir: Float) {
+private fun ElixirBar(elixir: Float, assets: GameAssets?) {
+    val empty = assets?.get("ui/elixerbalk_leeg.png")
+    val fill = assets?.get("ui/elixerbalk_vulling.png")
+    if (empty != null && fill != null) {
+        val measurer = rememberTextMeasurer()
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp, end = 8.dp, bottom = 10.dp)
+                .aspectRatio(empty.width.toFloat() / empty.height),
+        ) {
+            val dst = IntSize(size.width.toInt(), size.height.toInt())
+            drawImage(empty, dstSize = dst, filterQuality = FilterQuality.Medium)
+            // Fill runs from x = 84 to 620 of 640 (graphics/LEESMIJ.md); clip it to the current elixir.
+            val fillRight = size.width * (84f + 536f * (elixir / 10f).coerceIn(0f, 1f)) / 640f
+            clipRect(right = fillRight) { drawImage(fill, dstSize = dst, filterQuality = FilterQuality.Medium) }
+            // Number on the droplet at the left of the bar
+            val label = measurer.measure(
+                "${elixir.toInt()}",
+                TextStyle(color = Color.White, fontSize = (size.height * 0.32f).toSp(), fontWeight = FontWeight.Bold),
+            )
+            drawText(label, topLeft = Offset(size.width * 0.053f - label.size.width / 2f, size.height * 0.6f - label.size.height / 2f))
+        }
+        return
+    }
     Row(
         Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

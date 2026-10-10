@@ -160,7 +160,7 @@ class EffectSystem {
         }
     }
 
-    fun drawAirEffects(scope: DrawScope, t: ArenaTransform, now: Float) = with(scope) {
+    fun drawAirEffects(scope: DrawScope, t: ArenaTransform, now: Float, assets: GameAssets? = null) = with(scope) {
         for (e in effects) {
             val p = e.progress(now)
             when (e) {
@@ -202,6 +202,12 @@ class EffectSystem {
                 }
                 is Effect.Lightning -> {
                     val c = t.toScreen(e.pos)
+                    val zapArt = assets?.spell("zap")
+                    if (zapArt != null) {
+                        val grow = 0.8f + 0.4f * p
+                        drawSprite(zapArt, c, Offset(zapArt.width / 2f, zapArt.height / 2f), t.len(e.radius * 2f * grow), alpha = 1f - p)
+                        continue
+                    }
                     drawCircle(Color(0xFF80D8FF).copy(alpha = (1f - p) * 0.5f), t.len(e.radius), c)
                     drawLightningBolt(c - Offset(0f, t.len(6f)), c, t.len(0.12f), e.seed, 1f - p)
                     for (i in 0 until 4) {

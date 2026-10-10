@@ -34,6 +34,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Graphics live in /graphics (see graphics/LEESMIJ.md); the PNGs are packaged as assets.
+    sourceSets {
+        getByName("main") {
+            assets.srcDirs("../graphics/png")
+        }
+    }
 }
 
 dependencies {

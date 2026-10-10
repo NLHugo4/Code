@@ -92,3 +92,59 @@ private fun DrawScope.pathRect(t: ArenaTransform, x0: Float, y0: Float, x1: Floa
     drawRoundRect(Palette.PathEdge, topLeft - Offset(2f, 2f), Size(size.width + 4f, size.height + 4f), corner)
     drawRoundRect(Palette.Path, topLeft, size, corner)
 }
+
+/**
+ * Arena from graphics/png/arena: tree border, ground, animated river and bridges.
+ * Returns false when the images are not (yet) loaded, so the caller can fall back.
+ *
+ * Water animation: `arena_grond` already contains still water. On top we draw `water_basis`
+ * and two glint layers that scroll in opposite directions at different speeds and gently
+ * pulse in opacity. Both glint layers tile seamlessly in x. The bridges go on top last.
+ */
+fun DrawScope.drawArenaImages(assets: GameAssets, t: ArenaTransform, time: Float): Boolean {
+    val ground = assets["arena/arena_grond.png"] ?: return false
+    val arenaTopLeft = t.toScreen(0f, Arena.HEIGHT)
+
+    // Tree border: the play field sits at (90,160) inside the 900x1600 image (1x pixels).
+    assets["arena/omgeving.png"]?.let { border ->
+        val tilesWide = 900f / 40f
+        val anchor = Offset(90f / 900f * border.width, 160f / 1600f * border.height)
+        drawSprite(border, arenaTopLeft, anchor, t.len(tilesWide))
+    }
+    drawSprite(ground, arenaTopLeft, Offset.Zero, t.len(Arena.WIDTH))
+
+    // River: tiles y 15..17
+    val riverTopLeft = t.toScreen(0f, Arena.RIVER_MAX_Y)
+    val riverW = t.len(Arena.WIDTH)
+    val riverH = t.len(Arena.RIVER_MAX_Y - Arena.RIVER_MIN_Y)
+    assets["arena/water_basis.png"]?.let { drawSprite(it, riverTopLeft, Offset.Zero, riverW) }
+    clipRect(riverTopLeft.x, riverTopLeft.y, riverTopLeft.x + riverW, riverTopLeft.y + riverH) {
+        drawGlints(assets["arena/water_glinster_a.png"], riverTopLeft, riverW, time, tilesPerSecond = 0.45f, phase = 0f, t)
+        drawGlints(assets["arena/water_glinster_b.png"], riverTopLeft, riverW, time, tilesPerSecond = -0.3f, phase = 1.7f, t)
+    }
+
+    // Bridges: 112x132 (1x), centred on x = 3.5 / 14.5 and y = 16 tiles
+    assets["arena/brug.png"]?.let { bridge ->
+        for (bx in Arena.BRIDGE_XS) {
+            drawSprite(bridge, t.toScreen(bx, 16f), Offset(bridge.width / 2f, bridge.height / 2f), t.len(112f / 40f))
+        }
+    }
+    return true
+}
+
+private fun DrawScope.drawGlints(
+    image: androidx.compose.ui.graphics.ImageBitmap?,
+    topLeft: Offset,
+    width: Float,
+    time: Float,
+    tilesPerSecond: Float,
+    phase: Float,
+    t: ArenaTransform,
+) {
+    if (image == null) return
+    val shift = ((time * t.len(tilesPerSecond)) % width + width) % width
+    val alpha = 0.55f + 0.45f * sin(time * 1.6f + phase)
+    for (k in -1..0) {
+        drawSprite(image, topLeft + Offset(shift + k * width, 0f), Offset.Zero, width, alpha = alpha)
+    }
+}
